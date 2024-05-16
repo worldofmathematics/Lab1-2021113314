@@ -51,8 +51,10 @@ public class TextToGraph1 extends JFrame{
         chooseFileButton = new JButton("Choose Text File");
         buildGraphButton = new JButton("Build Graph");
         queryButton = new JButton("Query BridgeWords");
+        insertButton = new JButton("Insert BridgeWords");
+        shortestPathButton = new JButton("Calculate Shortest Path");
+        randomPathButton = new JButton("Random Path");
         EXITBUTTON=new JButton("exit!");
-
 
         word1Field = new JTextField(10);
         word2Field = new JTextField(10);
@@ -60,6 +62,9 @@ public class TextToGraph1 extends JFrame{
         controlPanel.add(chooseFileButton);
         controlPanel.add(buildGraphButton);
         controlPanel.add(queryButton);
+        controlPanel.add(insertButton);
+        controlPanel.add(shortestPathButton);
+        controlPanel.add(randomPathButton);
         controlPanel.add(EXITBUTTON);
         add(controlPanel, BorderLayout.SOUTH);
 
@@ -143,6 +148,69 @@ public class TextToGraph1 extends JFrame{
                     }
                     textArea.append("\n");
                 }
+            }
+        });
+
+        insertButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                // 提示用户输入文本
+                String newText = JOptionPane.showInputDialog(TextToGraph1.this, "Enter a new line of text:");
+
+                // 如果用户未输入任何内容，则不进行操作
+                if (newText == null || newText.isEmpty()) {
+                    textArea.append("No text entered. Bridge word insertion canceled.\n");
+                    return;
+                }
+
+                // 生成带有桥接词的新文本
+                String newTextWithBridgeWords = insertBridgeWords(newText);
+                textArea.append("your text:" + newText + "\n");
+                textArea.append("new text:" + newTextWithBridgeWords + "\n");
+            }
+        });
+
+        shortestPathButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                String word1 = JOptionPane.showInputDialog(TextToGraph1.this, "Enter the first word:").toLowerCase();
+                String word2 = JOptionPane.showInputDialog(TextToGraph1.this, "Enter the second word(or not):").toLowerCase();
+                String dotFilePath = "./result/marked_graph_all.dot"; // 标注后的 DOT 文件路径
+                String pngFilePath = "./result/marked_graph_all.png";
+                if(word2.isEmpty() && textToGraph.containsKey(word1)){
+                    textArea.append(shortestPathsFromSingleWord(word1));
+                } else if (textToGraph.containsKey(word1) && textToGraph.containsKey(word2)) {
+                    Map<List<String>, Integer>  shortestPath = calcShortestPath(word1, word2);
+                    if (!shortestPath.isEmpty()) {
+                        textArea.append("Shortest path from " + word1 + " to " + word2 + ": " + WordListFormatter(shortestPath,null) + "\n");
+                        convertDotFile(dotFilePath,shortestPath);
+                        convertDotToImage(dotFilePath,pngFilePath);
+                        displayImage(pngFilePath);
+                        if (dotFilePath != null) {
+                            textArea.append("Shortest path image generated: " + dotFilePath + "\n");
+                        } else {
+                            textArea.append("Failed to generate shortest path image.\n");
+                        }
+                    } else {
+                        textArea.append("No path found between " + word1 + " and " + word2 + "\n");
+                    }
+                }else {
+                    textArea.append("Invalid input.\n");
+                }
+
+
+            }
+        });
+
+        randomPathButton.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                String dotRandFilePath = "./result/marked_rand_graph.dot"; // 标注后的 DOT 文件路径
+                List<String> randomPath = randomTraversalForGUI(textArea);
+                dotRandFilePath = markAndDisplayShortestPath(randomPath,dotRandFilePath);
+//                textToGraph.displayImage(dotRandFilePath);
+                textArea.append(WordListFormatter(null, randomPath) + "\n");
+                textArea.append("Random traversal completed. Results written to './result/random_traversal.txt'.\n");
             }
         });
         EXITBUTTON.addActionListener(new ActionListener() {
@@ -348,6 +416,199 @@ public class TextToGraph1 extends JFrame{
         return bridgeWords;
     }
 
+    //功能4：根据bridge word生成新文本
+    public String insertBridgeWords(String text) {
+        StringBuilder result = new StringBuilder();
+        String[] words = text.split("\\s+"); // 按空格分割单词
+        for (int i = 0; i < words.length - 1; i++) {
+            String currentWord = words[i];
+            String nextWord = words[i + 1];
+            result.append(currentWord).append(" ");
+            if (textToGraph.containsKey(currentWord) && textToGraph.containsKey(nextWord)) {
+                List<String> bridgeWords = queryBridgeWords(currentWord, nextWord, false);
+                if (!bridgeWords.isEmpty()) {
+                    // 如果存在桥接词，则随机选择一个桥接词插入
+                    Random random = new Random();
+                    String selectedBridgeWord = new ArrayList<>(bridgeWords).get(random.nextInt(bridgeWords.size()));
+                    result.append(selectedBridgeWord).append(" ");
+                }
+            }
+        }
+        result.append(words[words.length - 1]); // 添加最后一个单词
+        return result.toString();
+    }
+
+    //功能5：最短路径
+    public static Map<List<String>, Integer> calcShortestPath(String start, String end) {
+        Map<List<String>, Integer> allPaths = findAll(start, end, textToGraph);
+        // 找到最短路径的长度
+        int shortestLength = Integer.MAX_VALUE;
+        for (int length : allPaths.values()) {
+            if (length < shortestLength) {
+                shortestLength = length;
+            }
+        }
+
+        // 筛选出所有最短路径
+        Map<List<String>, Integer> shortestPaths = new HashMap<>();
+        for (Map.Entry<List<String>, Integer> entry : allPaths.entrySet()) {
+            List<String> path = entry.getKey();
+            int length = entry.getValue();
+            if (length == shortestLength) {
+                shortestPaths.put(path,length);
+            }
+        }
+
+        return shortestPaths;
+    }
+    public static Map<List<String>, Integer> findAll(String start, String end, Map<String, Map<String, Integer>> textToGraph) {
+        Map<List<String>, Integer> allPathsWithLength = new HashMap<>();
+        Queue<List<String>> queue = new LinkedList<>();
+        Set<String> visited = new HashSet<>();
+        List<String> initialPath = new ArrayList<>();
+        initialPath.add(start);
+        queue.add(initialPath);
+        int weight=0;
+        //allPathsWithLength.put(new ArrayList<>(), weight);
+        while (!queue.isEmpty()) {
+
+            List<String> currentPath = queue.poll();
+            String current = currentPath.get(currentPath.size() - 1);
+
+            if (current.equals(end)) {
+                weight=calcWeight(currentPath,textToGraph);
+                allPathsWithLength.put(new ArrayList<>(currentPath), weight);
+                continue;
+            }
+
+            Map<String, Integer> neighbors = textToGraph.getOrDefault(current, Collections.emptyMap());
+            for (Map.Entry<String, Integer> neighbor : neighbors.entrySet()) {
+                String next = neighbor.getKey();
+                if(!visited.contains(next))
+                {
+                    List<String> newPath = new ArrayList<>(currentPath);
+                    newPath.add(next);
+                    queue.add(newPath);
+                }
+            }
+            visited.add(current);
+
+        }
+
+        return allPathsWithLength;
+    }
+
+    private static int calcWeight(List<String> path, Map<String, Map<String, Integer>> textToGraph) {
+        int weight = 0;
+        for (int i = 0; i < path.size() - 1; i++) {
+            String currentNode = path.get(i);
+            String nextNode = path.get(i + 1);
+            Map<String, Integer> neighbors = textToGraph.getOrDefault(currentNode, Collections.emptyMap());
+            weight += neighbors.getOrDefault(nextNode, 0);
+        }
+        return weight;
+    }
+
+    public static String markAndDisplayShortestPath(List<String> shortestPath,String markedDotFilePath) {
+//        String dotFilePath = "./result/marked_graph.dot"; // 标注后的 DOT 文件路径
+        try {
+            // 写入标注后的 DOT 文件
+            try (BufferedWriter bw = new BufferedWriter(new FileWriter(markedDotFilePath))) {
+                bw.write("digraph G {\n");
+                try (BufferedReader br = new BufferedReader(new FileReader("./result/directed_graph.dot"))) {
+                    String line;
+                    while ((line = br.readLine()) != null) {
+                        if (line.contains("->")) {
+                            String[] parts = line.split("->");
+                            String fromNode = parts[0].trim();
+                            String toNode = parts[1].trim().split("\\[")[0].trim();
+                            // 如果当前边是最短路径上的一部分，则修改箭头颜色为红色
+                            if (shortestPath.contains(fromNode) && shortestPath.contains(toNode) ) {
+                                if (parts[1].trim().endsWith(";")) {
+                                    // 如果是，删除最后一个字符';'
+                                    parts[1] = parts[1].trim().substring(0, parts[1].trim().length() - 1);
+                                }
+                                bw.write("\t"+parts[0].trim() + " -> " + parts[1] + " [color=red];");
+                                bw.newLine();
+                            } else {
+                                bw.write(line);
+                                bw.newLine();
+                            }
+                        }
+                    }
+                    bw.write("}"); // 结束有向图
+                }
+            }
+
+            // 调用 Graphviz 生成 PNG 文件
+            String pngName = markedDotFilePath.substring(0, markedDotFilePath.lastIndexOf(".")) + ".png";
+            ProcessBuilder processBuilder = new ProcessBuilder("dot", "-Tpng", markedDotFilePath, "-o", pngName);
+            Process process = processBuilder.start();
+            int exitCode = process.waitFor();
+            if (exitCode == 0) {
+                System.out.println("Image file generated: " + pngName);
+                // 在屏幕上显示图像
+                displayImage(pngName);
+            } else {
+                System.out.println("Failed to generate image file.");
+            }
+
+            return markedDotFilePath; // 返回标注后的 DOT 文件路径
+        } catch (IOException | InterruptedException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    public static String shortestPathsFromSingleWord(String word) {
+        StringBuilder sb = new StringBuilder();
+        for (String node : textToGraph.keySet()) {
+            if (!node.equals(word)) {
+                Map<List<String>, Integer> shortestPath = calcShortestPath(word, node);
+                if(shortestPath.isEmpty()){
+                    sb.append("no path from " + word + " to " + node + ".\n");
+                }else {
+                    sb.append("Shortest path from " + word + " to " + node + ": " + WordListFormatter(shortestPath,null) + "\n");
+                }
+//                System.out.println("Shortest path from " + word + " to " + node + ": " + WordListFormatter(shortestPath));
+            }
+        }
+        return sb.toString();
+    }
+
+    public static String  WordListFormatter (Map<List<String>, Integer> wordList,List<String> rand){
+        StringBuilder formattedString = new StringBuilder();
+        if(wordList!=null)
+        {
+            for (Map.Entry<List<String>, Integer> entry : wordList.entrySet())
+            {
+                List<String> node=entry.getKey();
+                for(int i=0;i< node.size();i++)
+                {
+                    formattedString.append(node.get(i));
+                    if(i<node.size()-1)
+                    {
+                        formattedString.append("→");
+                    }
+
+                }
+                formattedString.append("\n");
+                formattedString.append("the shortest path:"+entry.getValue()+"\n");
+            }
+        }else {
+            for (int i = 0; i < rand.size(); i++) {
+                formattedString.append(rand.get(i));
+                if (wordList!=null &&i < wordList.size() - 1) {
+                    formattedString.append(" → ");
+                }
+                formattedString.append("\n");
+            }
+        }
+
+
+        return formattedString.toString();
+    }
+
     // 在屏幕上显示图像
     public static void displayImage(String imagePath) {
 //        // 读取 PNG 图像文件
@@ -431,5 +692,165 @@ public class TextToGraph1 extends JFrame{
         ImageIcon icon = new ImageIcon(imagePath);
         label.setIcon(icon);
     }
+
+    //功能6：游走路径
+    public static void randomTraversal() {
+        try {
+            // 创建文件写入器
+            PrintWriter writer = new PrintWriter(new FileWriter("./result/random_traversal.txt"));
+
+            Random random = new Random();
+            List<String> nodesVisited = new ArrayList<>(); // 记录经过的节点
+            Set<String> edgesVisited = new HashSet<>(); // 记录经过的边
+
+            // 随机选择起始节点
+            List<String> nodes = new ArrayList<>(textToGraph.keySet());
+            String currentNode = nodes.get(random.nextInt(nodes.size()));
+            nodesVisited.add(currentNode);
+
+            // 开始随机遍历
+            while (true) {
+                // 检查用户是否希望停止遍历
+                if (shouldStopTraversal()) {
+                    break;
+                }
+
+                // 获取当前节点的出边
+                Map<String, Integer> edges = textToGraph.get(currentNode);
+                if (edges == null || edges.isEmpty()) {
+                    break; // 当前节点没有出边，遍历结束
+                }
+
+                // 随机选择下一个节点
+                List<String> nextNodes = new ArrayList<>(edges.keySet());
+                String nextNode = nextNodes.get(random.nextInt(nextNodes.size()));
+
+                // 记录经过的边
+                String edge = currentNode + " -> " + nextNode;
+                if (edgesVisited.contains(edge)) {
+                    break; // 出现重复的边，遍历结束
+                }
+                edgesVisited.add(edge);
+
+                // 记录经过的节点
+                nodesVisited.add(nextNode);
+
+                // 更新当前节点
+                currentNode = nextNode;
+            }
+
+            // 将遍历的节点写入文件
+            for (String node : nodesVisited) {
+                writer.print(node+" ");
+            }
+            writer.println();
+            // 关闭文件写入器
+            writer.close();
+
+            // 提示用户遍历已完成并文件已生成
+            System.out.println("Random traversal completed. Results written to './result/random_traversal.txt'.");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    // 检查用户是否希望停止随机游走
+    private static boolean shouldStopTraversal() {
+        Scanner scanner = new Scanner(System.in);
+        System.out.print("Press 'q' to stop random traversal, or press any other key to continue: ");
+        String input = scanner.nextLine().trim().toLowerCase();
+        return input.equals("q");
+    }
+
+    public static List<String> randomTraversalForGUI(JTextArea textArea) {
+        List<String> nodesVisited = new ArrayList<>(); // 记录经过的节点
+        try {
+            // 创建文件写入器
+            PrintWriter writer = new PrintWriter(new FileWriter("./result/random_traversal.txt"));
+            Random random = new Random();
+
+            List<String> nodes = new ArrayList<>(textToGraph.keySet());
+
+//            String currentNode = nodes.get(random.nextInt(nodes.size()));
+            // first node 随机选择起始节点
+            final String[] currentNode = {nodes.get(random.nextInt(nodes.size()))}; // 声明为 final 的数组(final String不行！
+            nodesVisited.add(currentNode[0]);
+
+
+            // begin
+            while (true) {
+                // 在控制台输出当前顶点
+                System.out.println("Current node: " + currentNode[0]);
+
+                // 在 UI 中显示当前顶点
+                SwingUtilities.invokeLater(new Runnable() {
+                    @Override
+                    public void run() {
+                        textArea.append("Current node: " + currentNode[0] + "\n");
+                        textArea.setCaretPosition(textArea.getDocument().getLength()); // 将文本区域滚动到最后一行
+                    }
+                });
+                // continue?
+                int option = JOptionPane.showConfirmDialog(null, "Continue traversal?", "Continue", JOptionPane.YES_NO_OPTION);
+                if (option != JOptionPane.YES_OPTION) {
+//                    System.out.println("3");
+                    textArea.append("quit!\n");
+                    textArea.setCaretPosition(textArea.getDocument().getLength());
+                    break;
+                }
+
+                // 获取当前节点的出边
+                Map<String, Integer> edges = textToGraph.get(currentNode[0]);
+                if (edges == null || edges.isEmpty()) {
+//                    System.out.println("1");
+                    textArea.append("no edge!\n");
+                    textArea.setCaretPosition(textArea.getDocument().getLength());
+                    break; // 当前节点没有出边，遍历结束
+                }
+
+                // 随机选择下一个节点
+                List<String> nextNodes = new ArrayList<>(edges.keySet());
+                String nextNode = nextNodes.get(random.nextInt(nextNodes.size()));
+
+//                String edge = currentNode[0] + " -> " + nextNode;
+                // 出现重复的顶点，遍历结束
+                if (nodesVisited.contains(nextNode)) {
+                    // 添加重复节点
+                    nodesVisited.add(nextNode);
+//                    System.out.println("2");
+                    textArea.append("Current node: " + nextNode + "\n");
+                    textArea.setCaretPosition(textArea.getDocument().getLength());
+                    textArea.append("node repeat!\n");
+                    textArea.setCaretPosition(textArea.getDocument().getLength());
+                    break;
+                }
+
+                // 记录经过的节点
+                nodesVisited.add(nextNode);
+
+                // 更新当前节点
+                currentNode[0] = nextNode;
+
+
+            }
+
+            // 将遍历的节点写入文件
+            for (String node : nodesVisited) {
+                writer.print(node+" ");
+            }
+            writer.println();
+            // 关闭文件写入器
+            writer.close();
+
+            // 提示用户遍历已完成并文件已生成
+//            System.out.println(nodesVisited);
+//            System.out.println("Random traversal completed. Results written to './result/random_traversal.txt'.");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+//        return WordListFormatter(nodesVisited);
+        return nodesVisited;
+    }
+
 
 }
