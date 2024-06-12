@@ -181,7 +181,8 @@ public class TextToGraph1 extends JFrame{
                 } else if (textToGraph.containsKey(word1) && textToGraph.containsKey(word2)) {
                     Map<List<String>, Integer>  shortestPath = calcShortestPath(word1, word2);
                     if (!shortestPath.isEmpty()) {
-                        textArea.append("Shortest path from " + word1 + " to " + word2 + ": " + WordListFormatter(shortestPath,null) + "\n");
+                        textArea.append("Shortest path from " + word1 + " to " + word2 + ": " +
+                                WordListFormatter(shortestPath,null) + "\n");
                         convertDotFile(dotFilePath,shortestPath);
                         convertDotToImage(dotFilePath,pngFilePath);
                         displayImage(pngFilePath);
@@ -346,36 +347,21 @@ public class TextToGraph1 extends JFrame{
                     bw.newLine();
                 }
             }
-//            ProcessBuilder processBuilder = new ProcessBuilder("dot", "-Tpng", "./result/marked_graph_all.dot", "-o", "./result/marked_graph_all.png");
-//            Process process = processBuilder.start();
-//            int exitCode = process.waitFor();
-//            if (exitCode == 0) {
-//                System.out.println("Image file generated: " + "marked_graph_all.png");
-//                // 在屏幕上显示图像
-//                displayImage("./result/marked_graph_all.png");
-//            } else {
-//                System.out.println("Failed to generate image file.");
-//            }
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
-
-
     //功能三：桥接词查询
     public List<String> queryBridgeWords(String start, String end, Boolean print) {
         List<String> bridgeWords = new ArrayList<>();
         if (!textToGraph.containsKey(start) && !textToGraph.containsKey(end)&&print)
         {
-            System.out.println("No " + start + " and "+ end +" in the graph!");
             return bridgeWords;
         }
         if (!textToGraph.containsKey(start) && print) {
-            System.out.println("No " + start + " in the graph!");
             return bridgeWords;
         }
         if (!textToGraph.containsKey(end) && print) {
-            System.out.println("No " + end + " in the graph!");
             return bridgeWords;
         }
         Map<String, Integer> edges1 = textToGraph.get(start);
@@ -392,26 +378,6 @@ public class TextToGraph1 extends JFrame{
             }
         }
 //        System.out.println(bridgeWords);
-        if(print)
-        {
-            if(bridgeWords.size()>1)
-            {
-                System.out.print("The bridge words from " + start + " to " + end + " are: ");
-                for (int i = 0; i < bridgeWords.size(); i++) {
-                    System.out.print(bridgeWords.get(i));
-                    if (i < bridgeWords.size() - 2) {
-                        System.out.print(", ");
-                    } else if (i == bridgeWords.size() - 2) {
-                        System.out.print(", and ");
-                    }
-                }
-                System.out.println(".");
-            } else if (bridgeWords.size()==1) {
-                System.out.println("The bridge words from " + start + " to " + end + " is: "+bridgeWords.get(0));
-            } else {
-                System.out.println("No bridge words from " + start + " to " + end + "!");
-            }
-        }
         return bridgeWords;
     }
     //功能4：根据bridge word生成新文本
